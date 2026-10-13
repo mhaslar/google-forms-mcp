@@ -114,6 +114,8 @@ This MCP server provides the following tools:
 }
 ```
 
+Every `updateItem` must carry the item's kind even when only the title changes (`"pageBreakItem": {}` for sections, `"questionItem": {"question": {"textQuestion": {}}}` for text questions); otherwise the API rejects it as a type change.
+
 When translating choice options, send the full `options` array with every original field (`isOther`, `goToAction`, `goToSectionId`, `image`) and change only `value`; otherwise branching is lost.
 
 ## Usage Example
