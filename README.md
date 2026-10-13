@@ -10,6 +10,7 @@ This MCP server uses the Google Forms API to provide functions such as creating,
 After cloning the repository, install dependencies
 ```
 cd google-forms-mcp
+npm install
 ```
 
 ### Build the Server
@@ -90,6 +91,30 @@ This MCP server provides the following tools:
 3. `add_multiple_choice_question` - Add a multiple choice question to the form
 4. `get_form` - Get form details
 5. `get_form_responses` - Get form responses
+6. `batch_update` - Apply raw Forms API `batchUpdate` requests (`updateFormInfo`, `updateSettings`, `createItem`, `updateItem`, `moveItem`, `deleteItem`) to an existing form. The batch is atomic and supports `requiredRevisionId` for safe concurrent edits.
+
+### Translating an existing form
+
+1. Copy the form (e.g. with the Google Drive connector's `copy_file`) once per language. The copy keeps all question types, sections, branching and settings.
+2. Call `get_form` on the copy to get its items, their `itemId`s, positions and the `revisionId`.
+3. Call `batch_update` with an `updateFormInfo` request for the title/description and one `updateItem` request per item, keeping `itemId` and the item's current index, with an `updateMask` that lists only the translated text fields:
+
+```json
+{
+  "formId": "COPY_FORM_ID",
+  "requiredRevisionId": "REVISION_ID_FROM_GET_FORM",
+  "requests": [
+    { "updateFormInfo": { "info": { "title": "Registration", "description": "..." }, "updateMask": "title,description" } },
+    { "updateItem": {
+        "item": { "itemId": "1a2b3c4d", "title": "Your name", "description": "As on your ID" },
+        "location": { "index": 0 },
+        "updateMask": "title,description"
+    } }
+  ]
+}
+```
+
+When translating choice options, send the full `options` array with every original field (`isOther`, `goToAction`, `goToSectionId`, `image`) and change only `value`; otherwise branching is lost.
 
 ## Usage Example
 

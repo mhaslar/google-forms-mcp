@@ -18,6 +18,7 @@
         *   `add_multiple_choice_question`: Adds a multiple-choice (radio button) question to a form.
         *   `get_form`: Retrieves details of an existing form.
         *   `get_form_responses`: Retrieves responses for a form.
+        *   `batch_update`: Applies raw Forms API batchUpdate requests (updateFormInfo, updateSettings, createItem, updateItem, moveItem, deleteItem) to an existing form, atomically, with optional `requiredRevisionId`. Enables editing existing items, e.g. translating a copied form in place.
     *   Error handling for API calls and invalid tool parameters.
     *   Communication with an MCP client via stdio.
 *   **Refresh Token Acquisition (`src/get-refresh-token.ts`):**
@@ -37,7 +38,7 @@
 *   **Testing:** No automated tests (unit, integration) are currently part of the project.
 *   **Advanced Form Features:** The current tools cover basic form creation and question types. More advanced Google Forms features are not yet supported (e.g., different question types like checkboxes, dropdowns, date/time, grids; sections; conditional logic; file uploads; quizzes).
 *   **Form Management:** No tools for deleting forms, updating form settings (beyond initial title/description), or managing form collaborators.
-*   **Question Management:** No tools for updating or deleting existing questions, or reordering questions.
+*   **Question Management:** Updating, deleting and reordering existing items is possible via the generic `batch_update` tool; there are no dedicated convenience tools for it.
 *   **More Granular Error Handling:** While basic error handling exists, it could potentially be enhanced with more specific error codes or details from the Google API.
 *   **Configuration Validation:** More robust validation of environment variables or tool inputs could be added.
 *   **Logging:** Current logging is basic (console.error). A more structured logging approach could be implemented.

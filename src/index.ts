@@ -20,6 +20,16 @@ if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN) {
   throw new Error('GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_REFRESH_TOKEN environment variables are required');
 }
 
+// Request kinds accepted by forms.batchUpdate (Forms API v1)
+const BATCH_REQUEST_TYPES = [
+  'updateFormInfo',
+  'updateSettings',
+  'createItem',
+  'updateItem',
+  'moveItem',
+  'deleteItem',
+];
+
 class GoogleFormsServer {
   private server: Server;
   private oauth2Client: OAuth2Client;
@@ -162,6 +172,47 @@ class GoogleFormsServer {
             },
             required: ['formId'],
           },
+        },
+        {
+          name: 'batch_update',
+          description: [
+            'Apply a list of Google Forms API batchUpdate requests to an existing form.',
+            'The whole batch is atomic: if any request fails, nothing is changed.',
+            `Each request must contain exactly one of: ${BATCH_REQUEST_TYPES.join(', ')}.`,
+            'Requests use the Forms API v1 shapes, e.g.',
+            '{"updateFormInfo": {"info": {"title": "...", "description": "..."}, "updateMask": "title,description"}}',
+            '{"updateItem": {"item": {"itemId": "...", "title": "...", "description": "..."}, "location": {"index": 0}, "updateMask": "title,description"}}.',
+            'To edit existing items (e.g. to translate a copied form): call get_form first, then for each item send updateItem',
+            'with its itemId, its current index as location.index, and an updateMask listing only the fields you change.',
+            'updateMask paths are relative to the item, e.g. "questionItem.question.choiceQuestion.options".',
+            'When replacing choice options, send every option with all its original fields (isOther, goToAction, goToSectionId, image) and change only "value", otherwise branching logic is lost.',
+            'Pass the revisionId from get_form as requiredRevisionId to avoid overwriting concurrent edits.',
+          ].join(' '),
+          inputSchema: {
+            type: 'object',
+            properties: {
+              formId: {
+                type: 'string',
+                description: 'Form ID',
+              },
+              requests: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                },
+                description: 'Array of Forms API batchUpdate Request objects, applied in order',
+              },
+              requiredRevisionId: {
+                type: 'string',
+                description: 'Optional. Fail if the form revision differs from this one (take it from get_form revisionId)',
+              },
+              includeFormInResponse: {
+                type: 'boolean',
+                description: 'Optional. Return the updated form in the response (default false)',
+              }
+            },
+            required: ['formId', 'requests'],
+          },
         }
       ],
     }));
@@ -179,6 +230,8 @@ class GoogleFormsServer {
             return await this.getForm(request.params.arguments);
           case 'get_form_responses':
             return await this.getFormResponses(request.params.arguments);
+          case 'batch_update':
+            return await this.batchUpdate(request.params.arguments);
           default:
             throw new McpError(
               ErrorCode.MethodNotFound,
@@ -428,6 +481,64 @@ class GoogleFormsServer {
       throw new McpError(
         ErrorCode.InternalError,
         `Failed to get form responses: ${error.message}`
+      );
+    }
+  }
+
+  private async batchUpdate(args: any) {
+    if (!args.formId) {
+      throw new McpError(ErrorCode.InvalidParams, 'Form ID is required');
+    }
+    if (!Array.isArray(args.requests) || args.requests.length === 0) {
+      throw new McpError(ErrorCode.InvalidParams, 'requests must be a non-empty array');
+    }
+
+    args.requests.forEach((req: any, i: number) => {
+      if (!req || typeof req !== 'object' || Array.isArray(req)) {
+        throw new McpError(ErrorCode.InvalidParams, `requests[${i}] must be an object`);
+      }
+      const keys = Object.keys(req);
+      if (keys.length !== 1 || !BATCH_REQUEST_TYPES.includes(keys[0])) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          `requests[${i}] must contain exactly one of: ${BATCH_REQUEST_TYPES.join(', ')} (got: ${keys.join(', ') || 'nothing'})`
+        );
+      }
+    });
+
+    const requestBody: any = {
+      requests: args.requests,
+      includeFormInResponse: args.includeFormInResponse || false,
+    };
+    if (args.requiredRevisionId) {
+      requestBody.writeControl = { requiredRevisionId: args.requiredRevisionId };
+    }
+
+    try {
+      const response = await this.forms.forms.batchUpdate({
+        formId: args.formId,
+        requestBody,
+      });
+
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              success: true,
+              appliedRequests: args.requests.length,
+              ...response.data,
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      console.error('Error in batch update:', error);
+      // Surface Google's own error message (it names the failing request and field)
+      const detail = error?.response?.data?.error?.message || error.message;
+      throw new McpError(
+        ErrorCode.InternalError,
+        `Failed to batch update form: ${detail}`
       );
     }
   }
